@@ -126,6 +126,16 @@ def test_wrapper_that_spans_the_label_and_the_answer_is_removed(solution_str):
     assert pred == "42"
 
 
+@pytest.mark.parametrize("solution_str", ["__Answer__: x__", "__Answer:__ x__"])
+def test_wrapper_that_is_closed_by_the_label_is_not_stripped_from_the_answer(solution_str):
+    # The label closes the wrapper itself, so the trailing underscores belong to
+    # the answer.
+    correct, pred = is_correct_minerva(solution_str, "x__")
+
+    assert correct is True
+    assert pred == "x__"
+
+
 def test_long_asterisk_run_does_not_stall_the_cleanup():
     # A long run of asterisks must not make the cleanup backtrack. The previous
     # decoration pattern needed seconds for this input.

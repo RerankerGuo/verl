@@ -262,11 +262,20 @@ def is_correct_minerva(
         extracted_answer = match.group(1) if match.re.groups else match.group(0)
         # A wrapper can span the label and the answer, e.g. "__Answer: 42__". The
         # label is not part of the capture, so the closing marker still is. It is
-        # removed when the text in front of the label opens the same marker. A
-        # single "_" is not a wrapper, because it is the LaTeX subscript operator.
+        # removed when the text in front of the label opens the same marker and
+        # the label itself does not close it already, e.g. "__Answer__: 42__"
+        # closes the wrapper at the label. A single "_" is not a wrapper, because
+        # it is the LaTeX subscript operator.
         opening = _marker_run(solution_str[: match.start()], leading=False)
         if opening and opening != "_" and extracted_answer.endswith(opening):
-            extracted_answer = extracted_answer[: -len(opening)].strip()
+            label = solution_str[match.start() : match.start(1)] if match.re.groups else ""
+            before_colon, _, after_colon = label.partition(":")
+            closes = {
+                _marker_run(before_colon.rstrip(), leading=False),
+                _marker_run(after_colon.strip(), leading=False),
+            }
+            if opening not in closes:
+                extracted_answer = extracted_answer[: -len(opening)].strip()
     else:
         extracted_answer = "[INVALID]"
     # The label may be decorated with markdown emphasis (e.g. "**Answer:** 42")
