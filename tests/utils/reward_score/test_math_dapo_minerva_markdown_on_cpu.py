@@ -26,6 +26,8 @@ MARKDOWN_ANSWERS = [
     "Let me solve it.\n\nAnswer: *42*",
     "Let me solve it.\n\n__Answer:__ 42",
     "Let me solve it.\n\n`Answer:` 42",
+    "Let me solve it.\n\n`Answer:`\n\n42",
+    "Let me solve it.\n\n**Answer**: 42",
 ]
 
 
@@ -67,6 +69,40 @@ def test_markdown_emphasis_inside_the_answer_is_kept():
 
     assert correct is True
     assert pred == "3*4"
+
+
+def test_trailing_asterisk_that_belongs_to_the_answer_is_kept():
+    # A single trailing "*" can be part of the answer itself, so it is only
+    # removed when it forms a matching answer wrapper (e.g. "*42*").
+    correct, pred = is_correct_minerva("Answer: x*", "x*")
+
+    assert correct is True
+    assert pred == "x*"
+
+    # The prediction must not collapse to "x" either, or it would incorrectly
+    # agree with a ground truth of "x".
+    correct, pred = is_correct_minerva("Answer: x*", "x")
+
+    assert correct is False
+    assert pred == "x*"
+
+
+def test_leading_asterisk_is_treated_as_formatting():
+    # In contrast to the trailing side, a leading "*" opens an emphasis that
+    # was never closed, so it is formatting and not part of the answer.
+    correct, pred = is_correct_minerva("Answer: *42", "42")
+
+    assert correct is True
+    assert pred == "42"
+
+
+@pytest.mark.parametrize("solution_str", ["**Answer**: 42", "**Answer**:\n\n42", "__Answer__: 42"])
+def test_markdown_marker_between_the_label_and_the_colon_is_accepted(solution_str):
+    # The closing emphasis marker may sit between the label and its colon.
+    correct, pred = is_correct_minerva(solution_str, "42")
+
+    assert correct is True
+    assert pred == "42"
 
 
 @pytest.mark.parametrize("answer", ["x_1", "_1", "x_"])

@@ -20,10 +20,15 @@ from typing import Optional
 # (e.g. "**Answer:** 42") or around the answer value (e.g. "Answer: **42**").
 # Ordered longest first, so that the longest wrapper is matched.
 _MARKDOWN_EMPHASIS_WRAPPERS = ("***", "___", "**", "__", "*", "_", "`")
-# Markers that are unambiguous on their own and may therefore decorate a single
-# side of the answer. Underscores are excluded: "_" is also the LaTeX subscript
-# operator, so it is only removed when it wraps the whole answer.
-_MARKDOWN_DECORATION_PATTERN = r"(?:\*\*\*|\*\*|\*|`)"
+# A marker that decorates the start of the answer, e.g. "** 42" left over from
+# "**Answer:** 42". Underscores are excluded: "_" is also the LaTeX subscript
+# operator, so it is only removed when it wraps the whole answer. A leading "*"
+# is removed as well, because it opens an emphasis that never got closed.
+_MARKDOWN_LEADING_DECORATION = re.compile(r"^(?:\*\*\*|\*\*|\*|`)+")
+# A marker that decorates the end of the answer, e.g. "42**" left over from
+# "**Answer: 42**". A single trailing "*" is kept, because it can be part of
+# the answer itself (e.g. "x^*" or "x*").
+_MARKDOWN_TRAILING_DECORATION = re.compile(r"(?:\*\*\*|\*\*|`)+$")
 
 
 def _strip_markdown_emphasis(text: str) -> str:
@@ -34,7 +39,8 @@ def _strip_markdown_emphasis(text: str) -> str:
 
     Underscore emphasis is only removed when it encloses the whole answer,
     because "_" is also the LaTeX subscript operator and answers such as "x_1"
-    must stay untouched.
+    must stay untouched. A single trailing "*" is kept for the same reason:
+    it can be part of the answer itself, e.g. "x^*".
 
     Args:
         text: The extracted answer text
@@ -51,9 +57,9 @@ def _strip_markdown_emphasis(text: str) -> str:
             break
 
     # A marker that decorates one side only, e.g. "** 42" (left over from
-    # "**Answer:** 42") or "42**" (left over from "Answer: **42**").
-    stripped = re.sub(rf"^(?:{_MARKDOWN_DECORATION_PATTERN})+", "", stripped).strip()
-    stripped = re.sub(rf"(?:{_MARKDOWN_DECORATION_PATTERN})+$", "", stripped).strip()
+    # "**Answer:** 42") or "42**" (left over from "**Answer: 42**").
+    stripped = _MARKDOWN_LEADING_DECORATION.sub("", stripped).strip()
+    stripped = _MARKDOWN_TRAILING_DECORATION.sub("", stripped).strip()
     return stripped
 
 
@@ -206,7 +212,10 @@ def is_correct_minerva(
     solution_str: str,
     gt: str,
     gt_need_extract: bool = False,
-    answer_pattern: str = r"(?i)Answer\s*:\s*(?:(?:\*\*\*|\*\*|\*|___|__|_)(?=\s|$))?\s*([^\n]+)",
+    answer_pattern: str = (
+        r"(?i)Answer(?:\*\*\*|\*\*|\*|___|__|_|`)?\s*:\s*"
+        r"(?:(?:\*\*\*|\*\*|\*|___|__|_|`)(?=\s|$))?\s*([^\n]+)"
+    ),
 ) -> tuple[bool, str]:
     """Check if the solution is correct according to Minerva criteria.
 
@@ -215,8 +224,11 @@ def is_correct_minerva(
         gt: The ground truth answer
         gt_need_extract: Whether the ground truth needs extraction
         answer_pattern: Regex pattern to extract the answer. The default skips an
-            optional markdown emphasis marker placed between the label and the
-            answer, so that e.g. "**Answer:**\\n\\n42" is parsed as "42".
+            optional markdown emphasis or code marker placed between the label
+            and the answer, so that e.g. "**Answer:**\\n\\n42" and
+            "`Answer:`\\n\\n42" are parsed as "42". A marker between the label
+            and its colon is skipped as well, so that e.g. "**Answer**: 42" is
+            parsed as "42".
 
     Returns:
         Tuple of (is_correct, normalized_prediction)
