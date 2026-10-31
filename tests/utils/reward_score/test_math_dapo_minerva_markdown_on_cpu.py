@@ -14,6 +14,8 @@
 
 """Tests that the Minerva answer extraction in math_dapo tolerates markdown emphasis."""
 
+import time
+
 import pytest
 
 from verl.utils.reward_score.math_dapo import compute_score, is_correct_minerva
@@ -114,7 +116,31 @@ def test_nested_emphasis_wrappers_are_removed():
     assert pred == "42"
 
 
-@pytest.mark.parametrize("answer", ["x_1", "_1", "x_"])
+@pytest.mark.parametrize("solution_str", ["__Answer: 42__", "**Answer: 42**", "*Answer: 42*", "`Answer: 42`"])
+def test_wrapper_that_spans_the_label_and_the_answer_is_removed(solution_str):
+    # The label is not part of the capture, so the closing marker of a wrapper
+    # that spans the label and the answer stays inside the captured answer.
+    correct, pred = is_correct_minerva(solution_str, "42")
+
+    assert correct is True
+    assert pred == "42"
+
+
+def test_long_asterisk_run_does_not_stall_the_cleanup():
+    # A long run of asterisks must not make the cleanup backtrack. The previous
+    # decoration pattern needed seconds for this input.
+    answer = "1" + "*" * 60 + "x"
+
+    start = time.monotonic()
+    correct, pred = is_correct_minerva(f"Answer: {answer}", answer)
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 2.0
+    assert correct is True
+    assert pred == answer
+
+
+@pytest.mark.parametrize("answer", ["x_1", "_1", "x_", "x__"])
 def test_latex_subscript_answer_is_not_treated_as_emphasis(answer):
     # "_" is the LaTeX subscript operator, so it must survive the extraction.
     correct, pred = is_correct_minerva(f"Answer: {answer}", answer)

@@ -20,15 +20,25 @@ from typing import Optional
 # (e.g. "**Answer:** 42") or around the answer value (e.g. "Answer: **42**").
 # Ordered longest first, so that the longest wrapper is matched.
 _MARKDOWN_EMPHASIS_WRAPPERS = ("***", "___", "**", "__", "*", "_", "`")
-# A marker that decorates the start of the answer, e.g. "** 42" left over from
-# "**Answer:** 42". Underscores are excluded: "_" is also the LaTeX subscript
-# operator, so it is only removed when it wraps the whole answer. A leading "*"
-# is removed as well, because it opens an emphasis that never got closed.
-_MARKDOWN_LEADING_DECORATION = re.compile(r"^(?:\*\*\*|\*\*|\*|`)+")
-# A marker that decorates the end of the answer, e.g. "42**" left over from
-# "**Answer: 42**". A single trailing "*" is kept, because it can be part of
-# the answer itself (e.g. "x^*" or "x*").
-_MARKDOWN_TRAILING_DECORATION = re.compile(r"(?:\*\*\*|\*\*|`)+$")
+# The characters that markdown uses for emphasis and code markers.
+_MARKDOWN_MARKER_CHARS = "*`_"
+
+
+def _marker_run(text: str, leading: bool) -> str:
+    """Return the run of markdown marker characters at one side of the text.
+
+    Args:
+        text: The text to inspect
+        leading: Whether to inspect the start instead of the end of the text
+
+    Returns:
+        The run of marker characters, empty if that side has none
+    """
+    if leading:
+        rest = text.lstrip(_MARKDOWN_MARKER_CHARS)
+        return text[: len(text) - len(rest)]
+    rest = text.rstrip(_MARKDOWN_MARKER_CHARS)
+    return text[len(rest) :]
 
 
 def _strip_markdown_emphasis(text: str) -> str:
@@ -37,10 +47,10 @@ def _strip_markdown_emphasis(text: str) -> str:
     The markers are formatting, not part of the answer. Keeping them makes an
     otherwise correct answer compare unequal to the ground truth.
 
-    Underscore emphasis is only removed when it encloses the whole answer,
-    because "_" is also the LaTeX subscript operator and answers such as "x_1"
-    must stay untouched. A single trailing "*" is kept for the same reason:
-    it can be part of the answer itself, e.g. "x^*".
+    A single "_" is never removed, because it is also the LaTeX subscript
+    operator and answers such as "x_1" must stay untouched. A single trailing
+    "*" is kept for the same reason: it can be part of the answer itself, e.g.
+    "x^*".
 
     Args:
         text: The extracted answer text
@@ -61,9 +71,17 @@ def _strip_markdown_emphasis(text: str) -> str:
             break
 
     # A marker that decorates one side only, e.g. "** 42" (left over from
-    # "**Answer:** 42") or "42**" (left over from "**Answer: 42**").
-    stripped = _MARKDOWN_LEADING_DECORATION.sub("", stripped).strip()
-    stripped = _MARKDOWN_TRAILING_DECORATION.sub("", stripped).strip()
+    # "**Answer:** 42") or "42**" (left over from "**Answer: 42**"). The run is
+    # taken without a regex, because overlapping alternatives for the marker
+    # lengths would backtrack exponentially on a long run of asterisks.
+    # A single "_" is the LaTeX subscript operator and a single trailing "*" can
+    # be part of the answer itself, so both are kept.
+    leading = _marker_run(stripped, leading=True)
+    if leading and leading != "_":
+        stripped = stripped[len(leading) :].strip()
+    trailing = _marker_run(stripped, leading=False)
+    if trailing and trailing != "*" and "_" not in trailing:
+        stripped = stripped[: len(stripped) - len(trailing)].strip()
     return stripped
 
 
@@ -238,8 +256,19 @@ def is_correct_minerva(
         Tuple of (is_correct, normalized_prediction)
     """
     # Extract answer from solution
-    match = re.findall(answer_pattern, solution_str)
-    extracted_answer = match[-1] if match else "[INVALID]"
+    matches = list(re.finditer(answer_pattern, solution_str))
+    if matches:
+        match = matches[-1]
+        extracted_answer = match.group(1) if match.re.groups else match.group(0)
+        # A wrapper can span the label and the answer, e.g. "__Answer: 42__". The
+        # label is not part of the capture, so the closing marker still is. It is
+        # removed when the text in front of the label opens the same marker. A
+        # single "_" is not a wrapper, because it is the LaTeX subscript operator.
+        opening = _marker_run(solution_str[: match.start()], leading=False)
+        if opening and opening != "_" and extracted_answer.endswith(opening):
+            extracted_answer = extracted_answer[: -len(opening)].strip()
+    else:
+        extracted_answer = "[INVALID]"
     # The label may be decorated with markdown emphasis (e.g. "**Answer:** 42")
     # and the answer itself may be emphasized (e.g. "Answer: **42**").
     extracted_answer = _strip_markdown_emphasis(extracted_answer)
