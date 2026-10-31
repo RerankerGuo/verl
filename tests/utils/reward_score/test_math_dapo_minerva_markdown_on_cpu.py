@@ -28,6 +28,7 @@ MARKDOWN_ANSWERS = [
     "Let me solve it.\n\n`Answer:` 42",
     "Let me solve it.\n\n`Answer:`\n\n42",
     "Let me solve it.\n\n**Answer**: 42",
+    "Let me solve it.\n\nAnswer: **_42_**",
 ]
 
 
@@ -100,6 +101,14 @@ def test_leading_asterisk_is_treated_as_formatting():
 def test_markdown_marker_between_the_label_and_the_colon_is_accepted(solution_str):
     # The closing emphasis marker may sit between the label and its colon.
     correct, pred = is_correct_minerva(solution_str, "42")
+
+    assert correct is True
+    assert pred == "42"
+
+
+def test_nested_emphasis_wrappers_are_removed():
+    # "**_42_**" wraps the answer twice, and both wrappers are formatting.
+    correct, pred = is_correct_minerva("Answer: **_42_**", "42")
 
     assert correct is True
     assert pred == "42"

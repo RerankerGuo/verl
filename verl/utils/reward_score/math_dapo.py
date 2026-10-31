@@ -51,9 +51,13 @@ def _strip_markdown_emphasis(text: str) -> str:
     stripped = text.strip()
 
     # A wrapper that encloses the whole answer, e.g. "**42**" or "__42__".
-    for wrapper in _MARKDOWN_EMPHASIS_WRAPPERS:
-        if len(stripped) > 2 * len(wrapper) and stripped.startswith(wrapper) and stripped.endswith(wrapper):
-            stripped = stripped[len(wrapper) : -len(wrapper)].strip()
+    # Nested wrappers are removed as well, e.g. "**_42_**" -> "_42_" -> "42".
+    while True:
+        for wrapper in _MARKDOWN_EMPHASIS_WRAPPERS:
+            if len(stripped) > 2 * len(wrapper) and stripped.startswith(wrapper) and stripped.endswith(wrapper):
+                stripped = stripped[len(wrapper) : -len(wrapper)].strip()
+                break
+        else:
             break
 
     # A marker that decorates one side only, e.g. "** 42" (left over from
