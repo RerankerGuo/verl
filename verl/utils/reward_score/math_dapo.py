@@ -41,6 +41,24 @@ def _marker_run(text: str, leading: bool) -> str:
     return text[len(rest) :]
 
 
+def _strip_trailing_sentence_period(text: str) -> str:
+    """Remove a trailing sentence period from an answer.
+
+    Models routinely end an answer sentence with a period ("Answer: 42."), and
+    that period is punctuation rather than part of the answer. It is removed
+    before the markdown markers are stripped, so that a decorated answer that
+    is followed by a period ("**Answer:** 42.") still reduces to the bare
+    answer.
+
+    Args:
+        text: The answer text
+
+    Returns:
+        The answer without a trailing period
+    """
+    return text.rstrip(".")
+
+
 def _strip_markdown_emphasis(text: str) -> str:
     """Remove markdown emphasis/code markers that surround an extracted answer.
 
@@ -280,7 +298,7 @@ def is_correct_minerva(
         extracted_answer = "[INVALID]"
     # The label may be decorated with markdown emphasis (e.g. "**Answer:** 42")
     # and the answer itself may be emphasized (e.g. "Answer: **42**").
-    extracted_answer = _strip_markdown_emphasis(extracted_answer)
+    extracted_answer = _strip_markdown_emphasis(_strip_trailing_sentence_period(extracted_answer))
     if not extracted_answer:
         # The label carried no answer (e.g. a bare "**Answer:**" line), so fall
         # back to the `\boxed{}` answer instead of comparing against "".
@@ -289,9 +307,9 @@ def is_correct_minerva(
 
     # Process ground truth
     if gt_need_extract:
-        gt = normalize_final_answer(remove_boxed(last_boxed_only_string(gt)))
+        gt = normalize_final_answer(_strip_trailing_sentence_period(remove_boxed(last_boxed_only_string(gt))))
     else:
-        gt = normalize_final_answer(gt)
+        gt = normalize_final_answer(_strip_trailing_sentence_period(gt))
 
     return (pred == gt), pred
 

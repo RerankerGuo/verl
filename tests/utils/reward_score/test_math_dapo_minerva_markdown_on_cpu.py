@@ -181,3 +181,39 @@ def test_answer_label_without_value_is_rejected():
 
     assert result["score"] == -1.0
     assert result["acc"] is False
+
+
+# A trailing sentence period is punctuation, not part of the answer.
+PERIOD_ANSWERS = [
+    "Let me solve it.\n\nAnswer: 42.",
+    "Let me solve it.\n\n**Answer:** 42.",
+    "Let me solve it.\n\nAnswer: **42**.",
+    "Let me solve it.\n\n**Answer: 42**.",
+    "Let me solve it.\n\n__Answer:__ 42.",
+    "Let me solve it.\n\nAnswer: `42`.",
+    "Let me solve it.\n\nAnswer: *42*.",
+]
+
+
+@pytest.mark.parametrize("solution_str", PERIOD_ANSWERS)
+def test_minerva_answer_followed_by_a_sentence_period_is_accepted(solution_str):
+    result = compute_score(solution_str, "42")
+
+    assert result["score"] == 1.0
+    assert result["acc"] is True
+    assert result["pred"] == "42"
+
+
+@pytest.mark.parametrize("answer", ["3.14", "x_1", "x*", "\\frac{1}{2}"])
+def test_a_period_inside_the_answer_is_not_stripped(answer):
+    correct, pred = is_correct_minerva(f"Answer: {answer}", answer)
+
+    assert correct is True
+    assert pred == answer
+
+
+def test_a_ground_truth_with_a_trailing_period_still_matches():
+    correct, pred = is_correct_minerva("Answer: 42", "42.")
+
+    assert correct is True
+    assert pred == "42"
